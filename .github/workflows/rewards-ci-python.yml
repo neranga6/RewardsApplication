@@ -38,14 +38,77 @@ jobs:
       - name: Make Maven wrapper executable
         run: chmod +x mvnw
 
+      - name: Run JUnit tests
+        run: ./mvnw test
+
       - name: Build application
-        run: ./mvnw clean package
+        run: ./mvnw clean package -DskipTests
 
       - name: Start Spring Boot application
         run: |
-          nohup java -jar target/*.jar &
-          sleep 20
+          nohup java -jar target/*.jar > app.log 2>&1 &
+          echo "Waiting for app to start..."
 
-      - name: Run smoke test
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/actuator/health | grep UP; then
+              echo "App is UP!"
+              break
+            fi
+            echo "Waiting..."
+            sleep 2
+          done
+
+      - name: Run reward API smoke tests
         run: |
-          python -c "import requests; print(requests.get('http://localhost:8080').status_code)"
+          python - <<EOF
+          import requests
+          import sys
+
+          base_url = "http://localhost:8080/api/rewards"
+
+          transaction_payload = {
+              "customerId": 1,
+              "amount": 120.50,
+              "transactionDate": "2026-03-26"
+          }
+
+          try:
+              # 1. Create transaction
+              create_response = requests.post(
+                  f"{base_url}/transactions",
+                  json=transaction_payload,
+                  headers={"Content-Type": "application/json"}
+              )
+              print("POST /api/rewards/transactions ->", create_response.status_code)
+              print(create_response.text)
+              assert create_response.status_code == 201, "Create transaction failed"
+
+              # 2. Get all rewards
+              get_all_response = requests.get(base_url)
+              print("GET /api/rewards ->", get_all_response.status_code)
+              print(get_all_response.text)
+              assert get_all_response.status_code == 200, "Get all rewards failed"
+
+              all_rewards = get_all_response.json()
+              assert isinstance(all_rewards, list), "Expected rewards list"
+
+              # 3. Get rewards by customer
+              customer_id = transaction_payload["customerId"]
+              get_customer_response = requests.get(f"{base_url}/{customer_id}")
+              print(f"GET /api/rewards/{customer_id} ->", get_customer_response.status_code)
+              print(get_customer_response.text)
+              assert get_customer_response.status_code == 200, "Get rewards by customer failed"
+
+              customer_rewards = get_customer_response.json()
+              assert customer_rewards is not None, "Customer rewards response is empty"
+
+              print("All reward API smoke tests passed")
+
+          except Exception as e:
+              print("Smoke test failed:", str(e))
+              sys.exit(1)
+          EOF
+
+      - name: Print logs (if failed)
+        if: failure()
+        run: cat app.log
