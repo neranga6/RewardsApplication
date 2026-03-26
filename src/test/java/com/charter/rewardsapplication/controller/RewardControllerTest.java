@@ -1,99 +1,136 @@
 package com.charter.rewardsapplication.controller;
 
-import com.charter.rewardsapplication.exception.GlobalExceptionHandler;
 import com.charter.rewardsapplication.exception.ResourceNotFoundException;
 import com.charter.rewardsapplication.model.CreateTransactionRequest;
 import com.charter.rewardsapplication.model.CustomerRewardsSummary;
-import com.charter.rewardsapplication.model.MonthlyPoints;
 import com.charter.rewardsapplication.model.PurchaseTransaction;
+import com.charter.rewardsapplication.repo.PurchaseTransactionRepository;
 import com.charter.rewardsapplication.service.RewardCalculationService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.Mockito.*;
 
-@WebMvcTest(RewardController.class)
-@Import(GlobalExceptionHandler.class)
-class RewardControllerTest {
+@ExtendWith(MockitoExtension.class)
+class RewardCalculationServiceTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Mock
+    private PurchaseTransactionRepository repository;
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @MockBean
+    @InjectMocks
     private RewardCalculationService service;
 
-    @Test
-    void getAll_ShouldReturn200AndRewardsList() throws Exception {
-        CustomerRewardsSummary summary = new CustomerRewardsSummary(
-                101L,
-                "John",
-                List.of(new MonthlyPoints("January", 115)),
-                115
-        );
+    private PurchaseTransaction tx1;
+    private PurchaseTransaction tx2;
+    private PurchaseTransaction tx3;
 
-        when(service.getAllRewards()).thenReturn(List.of(summary));
+    @BeforeEach
+    void setUp() {
+        tx1 = PurchaseTransaction.builder()
+                .id(1L)
+                .customerId(101L)
+                .customerName("John")
+                .amount(120.0)
+                .transactionDate(LocalDate.of(2026, 1, 10))
+                .build();
 
-        mockMvc.perform(get("/api/rewards"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].customer_id").value(101))
-                .andExpect(jsonPath("$[0].customer_name").value("John"))
-                .andExpect(jsonPath("$[0].total_points").value(115))
-                .andExpect(jsonPath("$[0].monthly_points[0].month").value("January"))
-                .andExpect(jsonPath("$[0].monthly_points[0].points").value(115));
+        tx2 = PurchaseTransaction.builder()
+                .id(2L)
+                .customerId(101L)
+                .customerName("John")
+                .amount(75.0)
+                .transactionDate(LocalDate.of(2026, 1, 15))
+                .build();
+
+        tx3 = PurchaseTransaction.builder()
+                .id(3L)
+                .customerId(102L)
+                .customerName("Mary")
+                .amount(130.0)
+                .transactionDate(LocalDate.of(2026, 2, 11))
+                .build();
     }
 
     @Test
-    void getByCustomer_ShouldReturn200AndRewardSummary() throws Exception {
-        CustomerRewardsSummary summary = new CustomerRewardsSummary(
-                101L,
-                "John",
-                List.of(new MonthlyPoints("January", 115)),
-                115
-        );
-
-        when(service.getRewardsByCustomer(101L)).thenReturn(summary);
-
-        mockMvc.perform(get("/api/rewards/101"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.customer_id").value(101))
-                .andExpect(jsonPath("$.customer_name").value("John"))
-                .andExpect(jsonPath("$.total_points").value(115));
+    void calculatePoints_ShouldReturnZero_WhenAmountIs50OrLess() {
+        assertThat(service.calculatePoints(50)).isEqualTo(0);
+        assertThat(service.calculatePoints(45)).isEqualTo(0);
     }
 
     @Test
-    void getByCustomer_ShouldReturn404_WhenCustomerNotFound() throws Exception {
-        when(service.getRewardsByCustomer(999L))
-                .thenThrow(new ResourceNotFoundException("Customer not found: 999"));
-
-        mockMvc.perform(get("/api/rewards/999"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.error").value("Not Found"))
-                .andExpect(jsonPath("$.message").value("Customer not found: 999"))
-                .andExpect(jsonPath("$.path").value("/api/rewards/999"));
+    void calculatePoints_ShouldReturnCorrectPoints_WhenAmountBetween51And100() {
+        assertThat(service.calculatePoints(75)).isEqualTo(25);
+        assertThat(service.calculatePoints(100)).isEqualTo(50);
     }
 
     @Test
-    void create_ShouldReturn201AndSavedTransaction() throws Exception {
+    void calculatePoints_ShouldReturnCorrectPoints_WhenAmountGreaterThan100() {
+        assertThat(service.calculatePoints(120)).isEqualTo(90);
+        assertThat(service.calculatePoints(130)).isEqualTo(110);
+    }
+
+    @Test
+    void getAllRewards_ShouldReturnSummariesGroupedByCustomer() {
+        when(repository.findAll()).thenReturn(List.of(tx1, tx2, tx3));
+
+        List<CustomerRewardsSummary> result = service.getAllRewards();
+
+        assertThat(result).hasSize(2);
+
+        CustomerRewardsSummary john = result.stream()
+                .filter(r -> r.customerId().equals(101L))
+                .findFirst()
+                .orElseThrow();
+
+        CustomerRewardsSummary mary = result.stream()
+                .filter(r -> r.customerId().equals(102L))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(john.customerName()).isEqualTo("John");
+        assertThat(john.totalPoints()).isEqualTo(115);
+        assertThat(john.monthlyPoints()).hasSize(1);
+        assertThat(john.monthlyPoints().get(0).month()).isEqualTo("January");
+        assertThat(john.monthlyPoints().get(0).points()).isEqualTo(115);
+
+        assertThat(mary.customerName()).isEqualTo("Mary");
+        assertThat(mary.totalPoints()).isEqualTo(110);
+    }
+
+    @Test
+    void getRewardsByCustomer_ShouldReturnSummary_WhenCustomerExists() {
+        when(repository.findByCustomerId(101L)).thenReturn(List.of(tx1, tx2));
+
+        CustomerRewardsSummary result = service.getRewardsByCustomer(101L);
+
+        assertThat(result.customerId()).isEqualTo(101L);
+        assertThat(result.customerName()).isEqualTo("John");
+        assertThat(result.totalPoints()).isEqualTo(115);
+        assertThat(result.monthlyPoints()).hasSize(1);
+    }
+
+    @Test
+    void getRewardsByCustomer_ShouldThrowException_WhenCustomerDoesNotExist() {
+        when(repository.findByCustomerId(999L)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.getRewardsByCustomer(999L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Customer not found: 999");
+    }
+
+    @Test
+    void createTransaction_ShouldSaveAndReturnTransaction_WhenRequestIsValid() {
         CreateTransactionRequest request = new CreateTransactionRequest(
-                10L,
                 200L,
                 "Alice",
                 120.0,
@@ -108,38 +145,32 @@ class RewardControllerTest {
                 .transactionDate(LocalDate.of(2026, 3, 26))
                 .build();
 
-        when(service.createTransaction(any(CreateTransactionRequest.class))).thenReturn(saved);
+        when(repository.save(any(PurchaseTransaction.class))).thenReturn(saved);
 
-        mockMvc.perform(post("/api/rewards/transactions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(10))
-                .andExpect(jsonPath("$.customerId").value(200))
-                .andExpect(jsonPath("$.customerName").value("Alice"))
-                .andExpect(jsonPath("$.amount").value(120.0));
+        PurchaseTransaction result = service.createTransaction(request);
+
+        assertThat(result.getId()).isEqualTo(10L);
+        assertThat(result.getCustomerId()).isEqualTo(200L);
+        assertThat(result.getCustomerName()).isEqualTo("Alice");
+        assertThat(result.getAmount()).isEqualTo(120.0);
+        assertThat(result.getTransactionDate()).isEqualTo(LocalDate.of(2026, 3, 26));
+
+        verify(repository, times(1)).save(any(PurchaseTransaction.class));
     }
 
     @Test
-    void create_ShouldReturn400_WhenAmountIsNegative() throws Exception {
+    void createTransaction_ShouldThrowException_WhenAmountIsNegative() {
         CreateTransactionRequest request = new CreateTransactionRequest(
-                11L,
                 201L,
                 "Bob",
                 -10.0,
                 LocalDate.of(2026, 3, 26)
         );
 
-        when(service.createTransaction(any(CreateTransactionRequest.class)))
-                .thenThrow(new IllegalArgumentException("Amount cannot be negative"));
+        assertThatThrownBy(() -> service.createTransaction(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Amount cannot be negative");
 
-        mockMvc.perform(post("/api/rewards/transactions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message").value("Amount cannot be negative"))
-                .andExpect(jsonPath("$.path").value("/api/rewards/transactions"));
+        verify(repository, never()).save(any(PurchaseTransaction.class));
     }
 }

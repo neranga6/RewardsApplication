@@ -15,7 +15,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -128,7 +130,6 @@ class RewardCalculationServiceTest {
     @Test
     void createTransaction_ShouldSaveAndReturnTransaction_WhenRequestIsValid() {
         CreateTransactionRequest request = new CreateTransactionRequest(
-                10L,
                 200L,
                 "Alice",
                 120.0,
@@ -150,6 +151,8 @@ class RewardCalculationServiceTest {
         assertThat(result.getId()).isEqualTo(10L);
         assertThat(result.getCustomerId()).isEqualTo(200L);
         assertThat(result.getCustomerName()).isEqualTo("Alice");
+        assertThat(result.getAmount()).isEqualTo(120.0);
+        assertThat(result.getTransactionDate()).isEqualTo(LocalDate.of(2026, 3, 26));
 
         verify(repository, times(1)).save(any(PurchaseTransaction.class));
     }
@@ -157,7 +160,6 @@ class RewardCalculationServiceTest {
     @Test
     void createTransaction_ShouldThrowException_WhenAmountIsNegative() {
         CreateTransactionRequest request = new CreateTransactionRequest(
-                11L,
                 201L,
                 "Bob",
                 -10.0,
