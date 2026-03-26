@@ -8,7 +8,7 @@ public record CreateTransactionRequest(
         @JsonProperty("customer_id")
         Long customerId,
 
-        @JsonProperty("customer_name")
+        long l, @JsonProperty("customer_name")
         String customerName,
 
         @JsonProperty("amount")
