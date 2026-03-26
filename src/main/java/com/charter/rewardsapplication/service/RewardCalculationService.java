@@ -72,7 +72,6 @@ public class RewardCalculationService {
         }
 
         PurchaseTransaction tx = PurchaseTransaction.builder()
-                .id(req.id())
                 .customerId(req.customerId())
                 .customerName(req.customerName())
                 .amount(req.amount())

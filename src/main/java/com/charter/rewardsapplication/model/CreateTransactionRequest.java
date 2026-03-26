@@ -5,9 +5,6 @@ import java.time.LocalDate;
 
 public record CreateTransactionRequest(
 
-        @JsonProperty("id")
-        Long id,
-
         @JsonProperty("customer_id")
         Long customerId,
 
