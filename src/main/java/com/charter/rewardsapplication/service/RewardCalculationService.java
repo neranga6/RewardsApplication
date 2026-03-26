@@ -64,22 +64,32 @@ public class RewardCalculationService {
     /**
      * Creates transaction with rollback support.
      */
+
     @Transactional(rollbackFor = Exception.class)
     public PurchaseTransaction createTransaction(CreateTransactionRequest req) {
 
+        if (req.customerId() == null) {
+            throw new IllegalArgumentException("Customer ID is required");
+        }
+        if (req.customerName() == null || req.customerName().isBlank()) {
+            throw new IllegalArgumentException("Customer name is required");
+        }
+        if (req.transactionDate() == null) {
+            throw new IllegalArgumentException("Transaction date is required");
+        }
         if (req.amount() < 0) {
             throw new IllegalArgumentException("Amount cannot be negative");
         }
 
-        PurchaseTransaction tx = PurchaseTransaction.builder()
-                .customerId(req.customerId())
-                .customerName(req.customerName())
-                .amount(req.amount())
-                .transactionDate(req.transactionDate())
-                .build();
+        PurchaseTransaction tx = new PurchaseTransaction();
+        tx.setCustomerId(req.customerId());
+        tx.setCustomerName(req.customerName());
+        tx.setAmount(req.amount());
+        tx.setTransactionDate(req.transactionDate());
 
         return repository.save(tx);
     }
+
 
     /**
      * Builds reward summary per customer.
