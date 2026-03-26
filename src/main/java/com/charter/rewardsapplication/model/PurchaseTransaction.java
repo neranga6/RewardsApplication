@@ -2,9 +2,7 @@ package com.charter.rewardsapplication.model;
 
 
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
@@ -18,6 +16,7 @@ import java.time.LocalDate;
 public class PurchaseTransaction {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private Long customerId;
